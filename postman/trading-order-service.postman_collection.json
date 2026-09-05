@@ -1,0 +1,444 @@
+{
+  "info": {
+    "name": "Acme Trading - Order Service",
+    "description": "trading-order-service (default port 8081).\n\nRun in order: 'Place order' stores {{orderId}} as a collection variable and the requests after it depend on that.\n\nThe four requests under 'Error contract' assert what the service returns TODAY, which is not what it should return. GlobalExceptionHandler in OrderController.java is annotated @RestController instead of @ControllerAdvice, so its @ExceptionHandler methods are scoped to a class with no request mappings and never fire. An unknown order and a validation failure both escape to Boot's default handler and come back as 500 rather than 404 and 400. Those assertions are marked so that fixing the annotation makes them fail loudly rather than silently drift.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "accountId",
+      "value": "ACC-POSTMAN-1",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Place order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const order = pm.response.json();",
+                  "pm.test('order id is issued', () => pm.expect(order.orderId).to.be.a('string').and.not.empty);",
+                  "pm.test('symbol is upper-cased', () => pm.expect(order.symbol).to.eql('AAPL'));",
+                  "pm.test('starts OPEN and unfilled', () => {",
+                  "    pm.expect(order.status).to.eql('OPEN');",
+                  "    pm.expect(Number(order.filledQuantity)).to.eql(0);",
+                  "});",
+                  "pm.test('fee is charged', () => pm.expect(Number(order.estimatedFee)).to.be.above(0));",
+                  "pm.test('createdAt equals updatedAt on a new order', () => pm.expect(order.createdAt).to.eql(order.updatedAt));",
+                  "pm.collectionVariables.set('orderId', order.orderId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "description": "Creates an order. Symbol is upper-cased by the service; the fee is computed from the sample quote for the symbol and the configured account tier (acme.trading.default-account-tier, RETAIL by default).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"symbol\": \"aapl\",\n  \"side\": \"BUY\",\n  \"orderType\": \"MARKET\",\n  \"quantity\": 100,\n  \"clientOrderId\": \"postman-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get order by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const order = pm.response.json();",
+                  "pm.test('returns the requested order', () => pm.expect(order.orderId).to.eql(pm.collectionVariables.get('orderId')));",
+                  "pm.test('symbol round-trips', () => pm.expect(order.symbol).to.eql('AAPL'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Fetches the order created by 'Place order'."
+          }
+        },
+        {
+          "name": "List orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns an array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "pm.test('includes the order just placed', () => {",
+                  "    const ids = pm.response.json().map(o => o.orderId);",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get('orderId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "description": "Unfiltered list. Returns every order held in memory by this instance."
+          }
+        },
+        {
+          "name": "List orders by account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const orders = pm.response.json();",
+                  "pm.test('every order belongs to the requested account', () => {",
+                  "    orders.forEach(o => pm.expect(o.accountId).to.eql(pm.collectionVariables.get('accountId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders?accountId={{accountId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{accountId}}"
+                }
+              ]
+            },
+            "description": "Filtered list. accountId matching is exact and case-sensitive."
+          }
+        },
+        {
+          "name": "Amend order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const order = pm.response.json();",
+                  "pm.test('same order id', () => pm.expect(order.orderId).to.eql(pm.collectionVariables.get('orderId')));",
+                  "pm.test('amended fields applied', () => {",
+                  "    pm.expect(order.symbol).to.eql('MSFT');",
+                  "    pm.expect(Number(order.quantity)).to.eql(25);",
+                  "    pm.expect(order.status).to.eql('OPEN');",
+                  "});",
+                  "pm.test('account is unchanged by an amend', () => pm.expect(order.accountId).to.eql(pm.collectionVariables.get('accountId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/amend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "amend"
+              ]
+            },
+            "description": "Replaces quantity, symbol, side, type and limit price in place. The order id, the account and createdAt are taken from the stored order, so an amend cannot move an order to another account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"symbol\": \"MSFT\",\n  \"side\": \"SELL\",\n  \"orderType\": \"LIMIT\",\n  \"quantity\": 25,\n  \"limitPrice\": 400.0,\n  \"clientOrderId\": \"postman-amend-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const order = pm.response.json();",
+                  "pm.test('status is CANCELLED', () => pm.expect(order.status).to.eql('CANCELLED'));",
+                  "pm.test('identity preserved', () => pm.expect(order.orderId).to.eql(pm.collectionVariables.get('orderId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Cancels an OPEN or PENDING order. Cancelling a FILLED or already-CANCELLED order is rejected -- see 'Cancel the same order twice'."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error contract (records current behaviour)",
+      "description": "These assert what the service returns today, not what it should return. GlobalExceptionHandler is @RestController rather than @ControllerAdvice, so its handlers never fire. If someone fixes that annotation, these tests fail and the expected statuses in each script should be updated to 404 / 400.",
+      "item": [
+        {
+          "name": "Get an unknown order -> 500 (should be 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CURRENT behaviour: 500', () => pm.response.to.have.status(500));",
+                  "pm.test('INTENDED behaviour would be 404 -- see collection description', () => {",
+                  "    pm.expect(pm.response.code, 'if this is 404 the bug is fixed; update this collection').to.not.eql(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "does-not-exist"
+              ]
+            },
+            "description": "TradingException escapes the controller and Boot's default handler returns 500. Intended: 404 with {\"error\": \"Order not found: ...\"}."
+          }
+        },
+        {
+          "name": "Place an order with quantity 0 -> 500 (should be 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CURRENT behaviour: 500', () => pm.response.to.have.status(500));",
+                  "pm.test('INTENDED behaviour would be 400 -- see collection description', () => {",
+                  "    pm.expect(pm.response.code, 'if this is 400 the bug is fixed; update this collection').to.not.eql(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "description": "OrderValidator throws ValidationException, which escapes for the same reason. Intended: 400 with {\"error\": \"Quantity must be positive\"}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"symbol\": \"AAPL\",\n  \"side\": \"BUY\",\n  \"orderType\": \"MARKET\",\n  \"quantity\": 0,\n  \"clientOrderId\": \"postman-invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Place an order with no accountId -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
+            },
+            "description": "This one really is 400, but by a different route: OrderRequest's compact constructor throws NullPointerException while Jackson builds the record, which Spring maps to HttpMessageNotReadableException. Not the exception handler.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"symbol\": \"AAPL\",\n  \"side\": \"BUY\",\n  \"orderType\": \"MARKET\",\n  \"quantity\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel the same order twice -> 500 (should be 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CURRENT behaviour: 500', () => pm.response.to.have.status(500));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Run after 'Cancel order'. The second cancel throws ValidationException ('Order cannot be cancelled in status: CANCELLED') and escapes."
+          }
+        }
+      ]
+    }
+  ]
+}
